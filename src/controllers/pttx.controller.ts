@@ -35,7 +35,7 @@ export class PptxController {
       const pptxService = new PptxService()
       const data = await generateMockData()
 
-      const buffer = await pptxService.generateFromData(data)
+      const buffer = await pptxService.generateFromData(data, '2x4')
 
       res.setHeader('Content-Disposition', 'attachment; filename=demo.pptx')
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation')

@@ -64,6 +64,17 @@ export class PptxService {
     return { w, h }
   }
 
+  private getDrawingSpan(drawingMode: '1x2' | '1x4' | '2x2' | '2x4' | '4x2'): { rowspan: number; colspan: number } {
+    const map: Record<string, { rowspan: number; colspan: number }> = {
+      '1x2': { rowspan: 1, colspan: 2 },
+      '1x4': { rowspan: 1, colspan: 4 },
+      '2x2': { rowspan: 2, colspan: 2 },
+      '2x4': { rowspan: 2, colspan: 4 },
+      '4x1': { rowspan: 4, colspan: 2 }
+    }
+    return map[drawingMode] ?? { rowspan: 1, colspan: 1 }
+  }
+
   resetPptx() {
     this.pptx = new PptxGenJS()
     this.pptx.defineLayout({ name: this.options.name, width: this.options.width, height: this.options.height })
@@ -206,38 +217,64 @@ export class PptxService {
     this.gridManager.occupy(row, col)
   }
 
-  async generateFromData(data: PptxData): Promise<Buffer> {
-    console.time('PPTX Generation')
-
+  async generateFromData(
+    data: PptxData,
+    drawingMode: '1x2' | '1x4' | '2x2' | '2x4' | '4x2' = '2x2',
+    direction: 'horizontal' | 'vertical' = 'vertical',
+    debug: boolean = false,
+    showDrawing: boolean = true
+  ): Promise<Buffer> {
     this.resetPptx()
-    let slide = this.createSlide()
+    let slide = this.createSlide(debug)
     if (data.drawing_image) {
       this.addTitle(slide, `${data.title}${data.description ? ' - ' + data.description : ''}`)
-      this.addDrawingImage(slide, data.drawing_image, 2, 2)
+      if (showDrawing) {
+        const { rowspan, colspan } = this.getDrawingSpan(drawingMode)
+        this.addDrawingImage(slide, data.drawing_image, rowspan, colspan)
+      }
     }
 
     for (const product of data.products) {
       let rowsSpan = 1
+      let colsSpan = 1
+
       if (product.options && product.options.length > 0) {
-        rowsSpan = 2
+        if (direction === 'vertical') {
+          rowsSpan = 2
+          colsSpan = 1
+        } else {
+          rowsSpan = 1
+          colsSpan = 2
+        }
       }
-      let position = this.gridManager.findFreeSpot(1, rowsSpan)
+      let position = this.gridManager.findFreeSpot(rowsSpan, colsSpan)
       if (!position) {
         slide = this.createSlide()
         this.gridManager.reset()
         if (data.drawing_image) {
           this.addTitle(slide, `${data.title}${data.description ? ' - ' + data.description : ''}`)
-          this.addDrawingImage(slide, data.drawing_image, 2, 2)
+          if (showDrawing) {
+            const { rowspan, colspan } = this.getDrawingSpan(drawingMode)
+            this.addDrawingImage(slide, data.drawing_image, rowspan, colspan)
+          }
         }
-        position = this.gridManager.findFreeSpot(1, rowsSpan)
+        position = this.gridManager.findFreeSpot(rowsSpan, colsSpan)
       }
       const { row, col } = position!
       this.addProduct(slide, product, row, col)
       if (product.options && product.options.length > 0) {
-        this.addOption(slide, product.options, row, col + 1)
+        let startRow = row
+        let startCol = col
+
+        if (direction === 'vertical') {
+          startRow = row + 1
+        } else {
+          startCol = col + 1
+        }
+
+        this.addOption(slide, product.options, startRow, startCol)
       }
     }
-    console.timeEnd('PPTX Generation')
 
     return this.pptx.write({ outputType: 'nodebuffer' }) as Promise<Buffer>
   }
